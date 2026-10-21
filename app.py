@@ -418,6 +418,9 @@ def start_session():
 
         active = True
         session_id += 1
+        
+        # 启动蓝色 LED 平滑动画
+        start_led_animation()
 
         button_count += 1
         button_time = time.time()
