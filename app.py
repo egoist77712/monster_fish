@@ -14,16 +14,15 @@ from pymodbus.client import ModbusSerialClient
 # =========================================================
 
 app = Flask(
-    __name__,
+    _name_,
     template_folder="templates",
     static_folder="static"
 )
 
 
 # =========================================================
-# 2. LED 灯带设置
+# 2. LED 灯带设置：蓝色平滑增减效果
 # =========================================================
-
 
 LED_PIN = board.D18
 NUM_PIXELS = 100
@@ -44,6 +43,15 @@ pixels = neopixel.NeoPixel(
 )
 
 led_lock = threading.Lock()
+
+# 当前实际点亮的 LED 数量
+current_led_count = 0
+
+# 根据电子秤重量计算的目标 LED 数量
+target_led_count = 0
+
+# 动画线程运行标志
+led_animation_running = True
 
 
 def update_leds(weight):
@@ -99,16 +107,31 @@ def led_animation_worker():
 
         time.sleep(LED_STEP_DELAY)
 
+
 def turn_off_leds():
-    """关闭全部 LED。"""
+    """立即关闭全部 LED，并清空动画目标。"""
+
+    global current_led_count
+    global target_led_count
 
     with led_lock:
+        target_led_count = 0
+        current_led_count = 0
+
         pixels.fill((0, 0, 0))
         pixels.show()
 
 
-# 启动时先关闭全部 LED
+# 启动时关闭全部 LED
 turn_off_leds()
+
+# 启动独立动画线程
+led_animation_thread = threading.Thread(
+    target=led_animation_worker,
+    daemon=True
+)
+
+led_animation_thread.start()
 
 
 # =========================================================
@@ -119,7 +142,7 @@ SERIAL_PORT = "/dev/ttyUSB0"
 BAUDRATE = 9600
 SLAVE_ID = 1
 
-# 以下两个参数需要与电子秤协议一致
+# 以下参数需要根据电子秤通信协议确认
 WEIGHT_REGISTER = 1
 WEIGHT_DIVISOR = 10.0
 
@@ -137,25 +160,24 @@ modbus_lock = threading.Lock()
 
 def read_scale_weight():
     """
-    读取电子秤的重量。
+    读取电子秤重量。
 
     返回：
-        float：读取成功，单位 kg
+        float：成功读取的重量，单位 kg
         None：读取失败
-
-    兼容部分不同版本的 pymodbus 参数名称。
     """
 
     try:
         with modbus_lock:
 
-            # 如果串口尚未连接，尝试连接
+            # 如果串口未连接，尝试连接
             if not getattr(client, "connected", False):
+
                 if not client.connect():
                     print("RS485 连接失败：", SERIAL_PORT)
                     return None
 
-            # 读取一个保持寄存器
+            # 兼容不同版本的 pymodbus
             try:
                 result = client.read_holding_registers(
                     address=WEIGHT_REGISTER,
@@ -170,6 +192,7 @@ def read_scale_weight():
                         count=1,
                         slave=SLAVE_ID
                     )
+
                 except TypeError:
                     result = client.read_holding_registers(
                         address=WEIGHT_REGISTER,
@@ -177,8 +200,9 @@ def read_scale_weight():
                         unit=SLAVE_ID
                     )
 
+            # 检查 Modbus 响应
             if result is None or result.isError():
-                print("Modbus 读取失败，请检查电子秤通信参数")
+                print("Modbus 读取失败，请检查通信参数")
                 return None
 
             if not result.registers:
@@ -186,6 +210,8 @@ def read_scale_weight():
                 return None
 
             raw_weight = result.registers[0]
+
+            # 根据电子秤协议换算重量
             weight = raw_weight / WEIGHT_DIVISOR
 
             return float(weight)
@@ -210,10 +236,10 @@ button_time = 0.0
 capture_seq = 0
 last_read_time = 0.0
 
-# 记录重量连续低于 5 kg 的起始时间
+# 连续低于 5 kg 的起始时间
 no_person_since = None
 
-# 每次启动新会话时递增，避免旧线程干扰新会话
+# 会话编号，防止旧线程影响新会话
 session_id = 0
 
 worker_thread = None
@@ -225,11 +251,11 @@ worker_thread = None
 
 def weighing_worker(my_session_id):
     """
-    会话开始后每 0.5 秒读取一次电子秤。
+    每 0.5 秒读取一次电子秤。
 
-    连续 5 秒重量低于 5 kg：
-        1. active = False
-        2. 停止采样
+    连续 5 秒低于 5 kg：
+        1. 自动结束会话
+        2. 停止称重采样
         3. 关闭全部 LED
     """
 
@@ -244,17 +270,23 @@ def weighing_worker(my_session_id):
     try:
         while True:
 
-            # 检查会话是否还在运行
+            # 检查会话是否仍然有效
             with state_lock:
-                if not active or my_session_id != session_id:
+
+                if (
+                    not active
+                    or my_session_id != session_id
+                ):
                     break
 
-            # 从真实电子秤读取重量
+            # 读取真实电子秤
             weight = read_scale_weight()
 
             if weight is None:
-                # 读数失败不能当成无人
+
+                # 读取失败不应被当作无人
                 with state_lock:
+
                     if my_session_id == session_id:
                         no_person_since = None
 
@@ -266,7 +298,11 @@ def weighing_worker(my_session_id):
 
             with state_lock:
 
-                if not active or my_session_id != session_id:
+                # 再次检查会话状态
+                if (
+                    not active
+                    or my_session_id != session_id
+                ):
                     break
 
                 current_weight = weight
@@ -279,8 +315,9 @@ def weighing_worker(my_session_id):
                     if no_person_since is None:
                         no_person_since = now
 
-                    # 连续低于 5 kg 达到 5 秒，结束会话
+                    # 连续低于 5 kg 达到 5 秒
                     elif now - no_person_since >= 5.0:
+
                         active = False
                         no_person_since = None
                         should_stop = True
@@ -290,10 +327,13 @@ def weighing_worker(my_session_id):
                     no_person_since = None
 
             if should_stop:
-                print("重量连续 5 秒低于 5 kg，会话自动结束")
+                print(
+                    "重量连续 5 秒低于 5 kg，会话自动结束"
+                )
                 break
 
-            # 根据重量点亮 LED
+            # 设置 LED 目标数量。
+            # 实际增减由独立动画线程执行。
             update_leds(weight)
 
             time.sleep(0.5)
@@ -301,9 +341,11 @@ def weighing_worker(my_session_id):
     finally:
 
         with state_lock:
-            is_current_session = (my_session_id == session_id)
+            is_current_session = (
+                my_session_id == session_id
+            )
 
-        # 只允许当前会话的线程关闭灯带
+        # 只有当前会话的线程可以关闭灯带
         if is_current_session:
             turn_off_leds()
 
@@ -315,7 +357,7 @@ def weighing_worker(my_session_id):
 # =========================================================
 
 def start_session():
-    """启动称重会话。"""
+    """启动新的称重会话。"""
 
     global active
     global button_count
@@ -354,21 +396,26 @@ def start_session():
 
 
 def stop_session():
-    """停止称重并关闭 LED。"""
+    """手动停止称重并立即关闭 LED。"""
 
     global active
     global no_person_since
+    global session_id
 
     with state_lock:
         active = False
         no_person_since = None
 
+        # 使旧称重线程失效，避免影响下一次会话
+        session_id += 1
+
     turn_off_leds()
-    print("称重已停止")
+
+    print("称重已停止，LED 已关闭")
 
 
 # =========================================================
-# 7. 前端首页：保留原来的 index.html
+# 7. 前端首页
 # =========================================================
 
 @app.route("/", methods=["GET"])
@@ -455,9 +502,7 @@ def capture_api():
 
 # =========================================================
 # 11. POST /api/weight
-#     模拟测试接口
-#
-#     真机模式不允许通过 HTTP 覆盖真实重量。
+#     真机模式不允许通过 HTTP 修改真实重量
 # =========================================================
 
 @app.route("/api/weight", methods=["POST"])
@@ -465,7 +510,10 @@ def set_weight():
 
     return jsonify({
         "ok": False,
-        "error": "真机模式下重量由 RS485 电子秤提供，不能通过 POST 修改"
+        "error": (
+            "真机模式下重量由 RS485 电子秤提供，"
+            "不能通过 POST 修改"
+        )
     }), 403
 
 
@@ -513,8 +561,18 @@ def health_api():
 def cleanup():
     """程序退出时关闭 LED 和 RS485 串口。"""
 
+    global led_animation_running
+
     try:
         stop_session()
+    except Exception as exc:
+        print("停止称重时发生异常：", exc)
+
+    # 通知动画线程退出
+    led_animation_running = False
+
+    try:
+        turn_off_leds()
     except Exception as exc:
         print("关闭 LED 时发生异常：", exc)
 
@@ -531,17 +589,22 @@ atexit.register(cleanup)
 # 15. 启动 Flask
 # =========================================================
 
-if __name__ == "__main__":
+if _name_ == "_main_":
 
     # 先尝试连接电子秤
     if client.connect():
         print("RS485 已连接：", SERIAL_PORT)
     else:
-        print("警告：RS485 暂时无法连接，后台读取时会继续尝试")
+        print(
+            "警告：RS485 暂时无法连接，"
+            "后台读取时会继续尝试"
+        )
 
     print("Minnow or Monster 已启动")
     print("浏览器访问：http://<树莓派IP>:8080/")
     print("硬件模式：Raspberry Pi")
+    print("LED 颜色：蓝色")
+    print("LED 效果：逐颗平滑增加 / 减少")
 
     try:
         app.run(
