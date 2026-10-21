@@ -24,9 +24,16 @@ app = Flask(
 # 2. LED 灯带设置
 # =========================================================
 
+
 LED_PIN = board.D18
 NUM_PIXELS = 100
 LED_BRIGHTNESS = 0.2
+
+# 蓝色 LED，RGB 格式
+LED_COLOR = (0, 0, 255)
+
+# 每颗 LED 变化之间的间隔，越大越慢
+LED_STEP_DELAY = 0.035
 
 pixels = neopixel.NeoPixel(
     LED_PIN,
