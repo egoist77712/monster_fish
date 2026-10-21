@@ -20,13 +20,22 @@ app = Flask(
 )
 
 
+
 # =========================================================
-# 2. LED 灯带设置
+# 2. LED 灯带设置：蓝色平滑动画
 # =========================================================
 
 LED_PIN = board.D18
 NUM_PIXELS = 100
 LED_BRIGHTNESS = 0.2
+
+# 蓝色 LED
+LED_COLOR = (255, 140, 0)
+
+# 动画参数
+ANIMATION_FPS = 30          # 每秒刷新 30 次
+ANIMATION_SPEED = 35        # 每秒最多变化 35 颗 LED
+ANIMATION_INTERVAL = 1.0 / ANIMATION_FPS
 
 pixels = neopixel.NeoPixel(
     LED_PIN,
@@ -36,43 +45,156 @@ pixels = neopixel.NeoPixel(
     pixel_order=neopixel.GRB
 )
 
+# LED 硬件锁
 led_lock = threading.Lock()
+
+# 动画状态锁
+animation_lock = threading.Lock()
+
+# 当前动画目标和显示位置
+target_led_count = 0.0
+display_led_count = 0.0
+
+# 动画运行状态
+animation_running = False
+animation_thread = None
 
 
 def update_leds(weight):
     """
-    每 1 kg 点亮 1 颗红色 LED。
-    例如：
-        10 kg -> 10 颗
-        25 kg -> 25 颗
-        100 kg -> 100 颗
+    更新 LED 动画目标。
+
+    每 1 kg 对应 1 颗 LED。
+    此函数只更新目标数量，不直接刷新灯带，
+    由动画线程负责平滑过渡。
     """
 
-    count = int(max(0, min(weight, NUM_PIXELS)))
+    global target_led_count
+
+    # 将重量限制在 0 至 100 kg
+    count = max(0.0, min(float(weight), float(NUM_PIXELS)))
+
+    with animation_lock:
+        target_led_count = count
+
+    print(
+        "重量: {:.1f} kg | 目标 LED: {:.1f}/{}".format(
+            weight, count, NUM_PIXELS
+        )
+    )
+
+
+def led_animation_worker():
+    """
+    LED 动画线程。
+
+    逐渐增加或减少点亮数量，
+    让灯带平滑地跟随真实重量变化。
+    """
+
+    global display_led_count
+
+    while True:
+
+        with animation_lock:
+            running = animation_running
+            target = target_led_count
+
+        # 动画停止后退出线程
+        if not running:
+            break
+
+        # 当前显示数量逐渐接近目标数量
+        difference = target - display_led_count
+
+        max_step = ANIMATION_SPEED * ANIMATION_INTERVAL
+
+        if abs(difference) <= max_step:
+            display_led_count = target
+        elif difference > 0:
+            display_led_count += max_step
+        else:
+            display_led_count -= max_step
+
+        # 计算实际点亮数量
+        count = int(display_led_count)
+
+        # 刷新 LED 灯带
+        with led_lock:
+            pixels.fill((0, 0, 0))
+
+            for i in range(min(count, NUM_PIXELS)):
+                pixels[i] = LED_COLOR
+
+            pixels.show()
+
+        time.sleep(ANIMATION_INTERVAL)
+
+
+def start_led_animation():
+    """
+    启动 LED 动画线程。
+    如果动画已经运行，则不重复创建线程。
+    """
+
+    global animation_running
+    global animation_thread
+    global display_led_count
+    global target_led_count
+
+    with animation_lock:
+
+        if animation_running:
+            return
+
+        # 从 0 颗开始播放点亮动画
+        display_led_count = 0.0
+        target_led_count = 0.0
+        animation_running = True
+
+        animation_thread = threading.Thread(
+            target=led_animation_worker,
+            daemon=True
+        )
+
+        animation_thread.start()
+
+    print("LED 平滑动画已启动")
+
+
+def stop_led_animation():
+    """
+    停止 LED 动画，并关闭所有灯。
+    """
+
+    global animation_running
+    global display_led_count
+    global target_led_count
+
+    with animation_lock:
+        animation_running = False
+        target_led_count = 0.0
+        display_led_count = 0.0
 
     with led_lock:
         pixels.fill((0, 0, 0))
-
-        for i in range(count):
-            pixels[i] = (0, 0,255)
-
         pixels.show()
 
-    print("重量: {:.1f} kg | LED: {}/{}".format(
-        weight, count, NUM_PIXELS
-    ))
+    print("LED 动画已停止，灯带已关闭")
 
 
 def turn_off_leds():
-    """关闭全部 LED。"""
+    """
+    关闭所有 LED。
+    保留此函数名称，兼容原来的其他代码。
+    """
 
-    with led_lock:
-        pixels.fill((0, 0, 0))
-        pixels.show()
+    stop_led_animation()
 
 
-# 启动时先关闭全部 LED
+# 启动时关闭所有 LED
 turn_off_leds()
+
 
 
 # =========================================================
