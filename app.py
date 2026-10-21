@@ -14,19 +14,25 @@ from pymodbus.client import ModbusSerialClient
 # =========================================================
 
 app = Flask(
-    __name__,
+    _name_,
     template_folder="templates",
     static_folder="static"
 )
 
 
 # =========================================================
-# 2. LED 灯带设置
+# 2. LED 灯带设置：蓝色平滑增减效果
 # =========================================================
 
 LED_PIN = board.D18
 NUM_PIXELS = 100
 LED_BRIGHTNESS = 0.2
+
+# 蓝色 LED，RGB 格式
+LED_COLOR = (0, 0, 255)
+
+# 每颗 LED 变化之间的间隔，越大越慢
+LED_STEP_DELAY = 0.035
 
 pixels = neopixel.NeoPixel(
     LED_PIN,
@@ -38,41 +44,95 @@ pixels = neopixel.NeoPixel(
 
 led_lock = threading.Lock()
 
+# 当前实际点亮的 LED 数量
+current_led_count = 0
+
+# 根据电子秤重量计算的目标 LED 数量
+target_led_count = 0
+
+# 动画线程运行标志
+led_animation_running = True
+
 
 def update_leds(weight):
     """
-    每 1 kg 点亮 1 颗红色 LED。
-    例如：
-        10 kg -> 10 颗
-        25 kg -> 25 颗
-        100 kg -> 100 颗
+    设置目标 LED 数量。
+    每 1 kg 对应 1 颗蓝色 LED。
+
+    注意：这里仅修改目标数量，
+    实际点亮和熄灭由动画线程完成。
     """
+
+    global target_led_count
 
     count = int(max(0, min(weight, NUM_PIXELS)))
 
     with led_lock:
-        pixels.fill((0, 0, 0))
+        target_led_count = count
 
-        for i in range(count):
-            pixels[i] = (0, 0,255)
+    print(
+        "重量: {:.1f} kg | 目标 LED: {}/{}".format(
+            weight, count, NUM_PIXELS
+        )
+    )
 
-        pixels.show()
 
-    print("重量: {:.1f} kg | LED: {}/{}".format(
-        weight, count, NUM_PIXELS
-    ))
+def led_animation_worker():
+    """
+    独立 LED 动画线程。
+
+    重量增加：每次点亮一颗 LED。
+    重量减少：每次熄灭一颗 LED。
+    """
+
+    global current_led_count
+
+    while led_animation_running:
+
+        with led_lock:
+
+            if current_led_count < target_led_count:
+
+                # 逐颗点亮
+                pixels[current_led_count] = LED_COLOR
+                current_led_count += 1
+                pixels.show()
+
+            elif current_led_count > target_led_count:
+
+                # 逐颗熄灭
+                current_led_count -= 1
+                pixels[current_led_count] = (0, 0, 0)
+                pixels.show()
+
+        time.sleep(LED_STEP_DELAY)
 
 
 def turn_off_leds():
-    """关闭全部 LED。"""
+    """立即关闭全部 LED，并清空动画目标。"""
+
+    global current_led_count
+    global target_led_count
 
     with led_lock:
+        target_led_count = 0
+        current_led_count = 0
+
         pixels.fill((0, 0, 0))
         pixels.show()
 
 
-# 启动时先关闭全部 LED
+# 启动时关闭全部 LED
 turn_off_leds()
+
+# 启动独立动画线程
+led_animation_thread = threading.Thread(
+    target=led_animation_worker,
+    daemon=True
+)
+
+led_animation_thread.start()
+
 
 # =========================================================
 # 3. RS485 / Modbus 电子秤设置
@@ -529,7 +589,7 @@ atexit.register(cleanup)
 # 15. 启动 Flask
 # =========================================================
 
-if __name__ == "__main__":
+if _name_ == "_main_":
 
     # 先尝试连接电子秤
     if client.connect():
