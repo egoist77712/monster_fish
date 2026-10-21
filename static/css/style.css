@@ -1,0 +1,329 @@
+/* "Are you a monster fish?" — portrait 32" kiosk screen, 1080 x 1920.
+ *
+ * Every number below is measured off the client's prompt deck
+ * (Section 1_Interactive_MinnowOrMonster_TVPrompts.pdf, 11 pages of 1080 x 1920 pt)
+ * rather than eyeballed, so the kiosk is a tracing of the design:
+ *
+ *   palette      #005338 field, #AADFF6 copy, #FFFFFF opening copy only
+ *   headline     Oswald 700, drawn 18.5 % taller and 27.7 % narrower than its
+ *                natural proportions: font 315.5 px / 123 px, scaleX 0.7235.
+ *                Verified against the deck: every headline word lands within
+ *                2 % of the designed width.
+ *   body         Chivo Black 900 at 60 px, line pitch 79.9 px. The weight was
+ *                confirmed by stem width: the deck's stems are 11-12 px at
+ *                60 px, Chivo Black is 11.9 px (Bold is 8.8 px).
+ *   small copy   Chivo Medium 500 at 56 px, line pitch 70 px, white.
+ *
+ * Vertical placement comes from the deck too. The three result families are a
+ * single column centred on the page (verified: with these gaps the copy lands
+ * within 2 px of the design on every page, including the 4-line variants):
+ *
+ *   headline -> copy   91 px      copy -> second block   80.5 px
+ *
+ * The opening and "baby fish" screens are hand-placed in the deck instead, so
+ * they get explicit offsets. The fish sits out of flow above the copy, exactly
+ * where the deck floats it: 68.5 px of air above the first line of text.
+ */
+
+@font-face {
+  font-family: 'Oswald';
+  src: url('../fonts/Oswald.ttf') format('truetype');
+  font-weight: 200 700;          /* variable font; the deck is set at 700 */
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Chivo';
+  src: url('../fonts/Chivo-Medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Chivo';
+  src: url('../fonts/Chivo-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Chivo';
+  src: url('../fonts/Chivo-Black.ttf') format('truetype');
+  font-weight: 900;
+  font-style: normal;
+  font-display: block;
+}
+
+:root {
+  --green: #005338;
+  --ice: #aadff6;          /* body copy on the result screens */
+  --headline: #abdff5;     /* headlines */
+  --white: #ffffff;        /* opening copy and the "baby fish" hint */
+
+  --font-display: 'Oswald', 'Arial Narrow', sans-serif;
+  --font-body: 'Chivo', 'Segoe UI', system-ui, sans-serif;
+
+  /* The deck's headline treatment: Oswald stretched vertically, so the px size is
+     larger than the designed type size, and squeezed back horizontally. */
+  --head-squeeze: 0.7235;
+  --head-size-opening: 16.4323vh;   /* 315.5 px, cap ink 259 px */
+  --head-size-result: 6.40625vh;    /* 123.0 px, cap ink 101 px */
+
+  --copy-size: 3.125vh;             /* 60 px  */
+  --copy-pitch: 1.33167;            /* 79.9 px */
+  --small-size: 2.91667vh;          /* 56 px  */
+  --small-pitch: 1.25;              /* 70 px  */
+
+  --gap-head-copy: 4.7396vh;        /* 91 px  */
+  --gap-blocks: 4.19271vh;          /* 80.5 px */
+
+  /* 换屏时的慢速淡入(客户 2026-10-20 要求:图片"逐渐出现,而不是突然切换")。
+     想更慢/更快改这三个值即可;app.js 里的等待动画时长不依赖它们。 */
+  --fade-image-ms: 900ms;           /* 鱼图淡入 */
+  --fade-copy-ms: 700ms;            /* 标题 / 正文淡入 */
+  --fade-copy-delay: 120ms;         /* 文字比图片晚一点出现 */
+  --fade-out-ms: 240ms;             /* 等待动画淡出(和结果页淡入交叉) */
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--green);
+  color: var(--ice);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  cursor: none;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+
+#screen {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: var(--green);
+  text-align: center;
+  overflow: hidden;
+}
+
+/* The three result families are one centred column; the deck centres it on the
+   page, so no padding tricks are needed. */
+#screen[data-layout="flow"] {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+/* ------------------------------------------------------------------- fish -- */
+/* Out of flow on purpose: the deck floats the illustration above the copy
+   instead of stacking it, so a 4-line result never pushes it off-centre.
+   The box matches the deck's envelope (823 x 313) and each illustration is
+   contained, i.e. the goonch fills the height and the arapaima the width. */
+#fish {
+  position: absolute;
+  left: 50%;
+  width: 76.2vw;
+  height: 16.3vh;
+  transform: translateX(-50%);
+  object-fit: contain;
+  object-position: center;
+}
+#fish[hidden] { display: none; }
+
+#screen[data-band="almost"] #fish { top: 25vh; }       /* deck p3: fish ink 483 */
+#screen[data-band="same"]   #fish { top: 20.31vh; }   /* deck p4: fish ink 390 */
+
+/* --------------------------------------------------------------- headline -- */
+#headline {
+  margin: 0;                   /* h1 carries a 0.67em margin that would lift it */
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: var(--headline);
+  white-space: pre-line;      /* the four-line stack is authored, not wrapped */
+  transform: scaleX(var(--head-squeeze));
+  transform-origin: 50% 50%;
+}
+#headline[hidden] { display: none; }
+
+/* --------------------------------------------------------- body copy ----- */
+#text,
+#extra {
+  margin: 0;
+  font-family: var(--font-body);
+  font-weight: 900;            /* Chivo Black, confirmed by stem width */
+  white-space: pre-line;
+  color: var(--ice);
+}
+#text[hidden], #extra[hidden] { display: none; }
+
+/* The deck sets the scientific names upright (it is a prompt sheet, not the
+   finished artwork), so they are not slanted here. Flip this to `italic` to
+   follow the "all scientific names are italicised" note from the review. */
+#text em, #extra em { font-style: normal; }
+
+/* Blocks are placed by the deck, so they leave the flow by default … */
+#headline,
+#text,
+#extra {
+  position: absolute;
+  left: 0;
+  right: 0;
+}
+/* … except inside the centred result column. */
+#screen[data-layout="flow"] > #headline,
+#screen[data-layout="flow"] > #text,
+#screen[data-layout="flow"] > #extra {
+  position: static;
+  left: auto;
+  right: auto;
+}
+
+/* ================================================== opening / idle screen == */
+#screen[data-band="idle"] #headline {
+  top: 12.1391vh;             /* deck line 1 ink top 258 px */
+  font-size: var(--head-size-opening);
+  line-height: 0.89599;       /* 282.7 px pitch */
+  letter-spacing: 0;
+}
+
+#screen[data-band="idle"] #text {
+  top: 74.3802vh;             /* deck ink top 1444 px */
+  font-size: var(--small-size);
+  line-height: var(--small-pitch);
+  font-weight: 500;
+  color: var(--white);        /* the only white copy in the deck */
+}
+
+/* ====================================================== "baby fish" screen == */
+#screen[data-band="baby"] #text {
+  top: 45.8599vh;             /* deck ink top 900 px */
+  font-size: var(--copy-size);
+  line-height: var(--copy-pitch);
+}
+
+#screen[data-band="baby"] #extra {
+  top: 74.4844vh;             /* deck ink top 1446 px */
+  font-size: var(--small-size);
+  line-height: var(--small-pitch);
+  font-weight: 500;
+  color: var(--white);
+}
+
+/* ========================================================= result screens == */
+#screen[data-layout="flow"] #headline {
+  font-size: var(--head-size-result);
+  line-height: 1;
+  margin-bottom: var(--gap-head-copy);
+}
+
+#screen[data-layout="flow"] #text,
+#screen[data-band="beyond"] #extra {
+  font-size: var(--copy-size);
+  line-height: var(--copy-pitch);
+}
+
+#screen[data-band="beyond"] #extra {
+  margin-top: var(--gap-blocks);
+}
+
+/* 客户明确不要"显示重量"的那一页:11 屏里没有它,这里也不再保留任何测量画面。 */
+/* 页面上也没有任何调试面板:联调/演示一律走 Postman 打接口。 */
+
+/* ================================================ 等待动画("Weighing...") == */
+/* 客户 2026-10-20:按下 Start 后,在灯带升起和称重过程中显示 "Weighing..."
+   和三个动态的点;灯带动画停止后才切到下一屏(切换由 app.js 控制)。 */
+
+#waiting {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  display: none;                 /* 只在 data-band="waiting" 时出现 */
+  justify-content: center;
+  align-items: flex-end;
+  gap: 0.9vh;
+}
+/* 只在没有 hidden 属性时出现(app.js 用 hidden 控制显示;
+   离开时先加 .leaving 淡出 240 ms,再设 hidden —— 这样和结果页的淡入是交叉的,
+   不会出现中间"空一帧"的闪白/闪绿)。 */
+#waiting:not([hidden]) { display: flex; }
+#waiting[hidden] { display: none; }
+#waiting.leaving {
+  animation: fade-out var(--fade-out-ms) ease-in both;
+}
+
+@keyframes fade-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+#waiting-label {
+  display: inline-block;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--head-size-result);   /* 和结果页标题同一档字号 */
+  line-height: 1;
+  color: var(--headline);
+  /* 和 PDF 标题同样的"压扁"处理,让这一屏看起来是同一套字 */
+  transform: scaleX(var(--head-squeeze));
+  transform-origin: 50% 100%;
+}
+
+.waiting-dots {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 0.75vh;
+  padding-bottom: 1.5vh;         /* 让三个点落在文字的基线上 */
+}
+
+.waiting-dots i {
+  display: block;
+  width: 1.15vh;
+  height: 1.15vh;
+  border-radius: 50%;
+  background: var(--headline);
+  opacity: 0.18;
+  animation: dot-pulse 1.2s ease-in-out infinite;
+}
+.waiting-dots i:nth-child(2) { animation-delay: 0.2s; }
+.waiting-dots i:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes dot-pulse {
+  0%, 70%, 100% { opacity: 0.18; translate: 0 0; }
+  30%           { opacity: 1;    translate: 0 -0.45vh; }
+}
+
+/* ===================================================== 慢速淡入(切换效果) == */
+/* 客户 2026-10-20:"将目前直接切换图片的方式改为慢速淡入效果"。
+   app.js 在每次换屏时重启动画(reflow 一下再设回),所以同一套规则可以反复用。
+   图片慢一点(900 ms),文字稍快(700 ms)并错开 120 ms,看起来是"图先浮出来、
+   字随后跟上",而不是整屏同时闪一下。 */
+
+#fish {
+  animation: fade-in var(--fade-image-ms) ease-out both;
+}
+#headline,
+#text,
+#extra {
+  animation: fade-in var(--fade-copy-ms) ease-out both;
+  animation-delay: var(--fade-copy-delay);
+}
+#waiting {
+  animation: fade-in var(--fade-copy-ms) ease-out both;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #fish, #headline, #text, #extra, #waiting { animation: none; }
+  .waiting-dots i { animation: none; opacity: 0.6; }
+}
