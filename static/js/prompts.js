@@ -102,7 +102,7 @@ window.PROMPTS = (() => {
   const MAX_RECORDED_KG = FISH[FISH.length - 1].kg;
 
   // 低于这个体重显示 "small baby fish"(客户文档没给具体数值,这是经验值)
-  const BABY_FISH_KG = 20;
+  const BABY_FISH_KG = 5;
 
   // "一样重"的容差:人体重量会有一两公斤的抖动,不可能要求分毫不差
   const SAME_TOLERANCE = 0.03;
