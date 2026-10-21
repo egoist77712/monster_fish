@@ -41,27 +41,32 @@ led_lock = threading.Lock()
 
 def update_leds(weight):
     """
-    每 1 kg 点亮 1 颗红色 LED。
+    每 1 kg 点亮 1 颗橙色 LED。
+    灯光从下往上逐颗点亮。
     例如：
-        10 kg -> 10 颗
-        25 kg -> 25 颗
-        100 kg -> 100 颗
+        10 kg -> 10 颗 LED
+        25 kg -> 25 颗 LED
+        100 kg -> 100 颗 LED
     """
 
     count = int(max(0, min(weight, NUM_PIXELS)))
 
     with led_lock:
+        # 先关闭所有 LED
         pixels.fill((0, 0, 0))
+        pixels.show()
 
+        # 从底部开始，逐颗向上点亮
         for i in range(count):
             pixels[i] = (255, 165, 0)
+            pixels.show()
 
-        pixels.show()
+            # 控制逐颗点亮的速度
+            time.sleep(0.03)
 
     print("重量: {:.1f} kg | LED: {}/{}".format(
         weight, count, NUM_PIXELS
     ))
-
 
 def turn_off_leds():
     """关闭全部 LED。"""
