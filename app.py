@@ -54,7 +54,7 @@ def update_leds(weight):
         pixels.fill((0, 0, 0))
 
         for i in range(count):
-            pixels[i] = (0, 0,255)
+            pixels[i] = (255, 165, 0)
 
         pixels.show()
 
