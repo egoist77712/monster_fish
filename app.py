@@ -41,32 +41,56 @@ led_lock = threading.Lock()
 
 def update_leds(weight):
     """
-    每 1 kg 点亮 1 颗橙色 LED。
-    灯光从下往上逐颗点亮。
-    例如：
-        10 kg -> 10 颗 LED
-        25 kg -> 25 颗 LED
-        100 kg -> 100 颗 LED
+    设置目标 LED 数量。
+    每 1 kg 对应 1 颗蓝色 LED。
+
+    注意：这里仅修改目标数量，
+    实际点亮和熄灭由动画线程完成。
     """
+
+    global target_led_count
 
     count = int(max(0, min(weight, NUM_PIXELS)))
 
     with led_lock:
-        # 先关闭所有 LED
-        pixels.fill((0, 0, 0))
-        pixels.show()
+        target_led_count = count
 
-        # 从底部开始，逐颗向上点亮
-        for i in range(count):
-            pixels[i] = (255, 165, 0)
-            pixels.show()
+    print(
+        "重量: {:.1f} kg | 目标 LED: {}/{}".format(
+            weight, count, NUM_PIXELS
+        )
+    )
 
-            # 控制逐颗点亮的速度
-            time.sleep(0.03)
 
-    print("重量: {:.1f} kg | LED: {}/{}".format(
-        weight, count, NUM_PIXELS
-    ))
+def led_animation_worker():
+    """
+    独立 LED 动画线程。
+
+    重量增加：每次点亮一颗 LED。
+    重量减少：每次熄灭一颗 LED。
+    """
+
+    global current_led_count
+
+    while led_animation_running:
+
+        with led_lock:
+
+            if current_led_count < target_led_count:
+
+                # 逐颗点亮
+                pixels[current_led_count] = LED_COLOR
+                current_led_count += 1
+                pixels.show()
+
+            elif current_led_count > target_led_count:
+
+                # 逐颗熄灭
+                current_led_count -= 1
+                pixels[current_led_count] = (0, 0, 0)
+                pixels.show()
+
+        time.sleep(LED_STEP_DELAY)
 
 def turn_off_leds():
     """关闭全部 LED。"""
