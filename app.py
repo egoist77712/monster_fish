@@ -14,7 +14,7 @@ from pymodbus.client import ModbusSerialClient
 # =========================================================
 
 app = Flask(
-    _name_,
+    __name__,
     template_folder="templates",
     static_folder="static"
 )
@@ -495,7 +495,7 @@ atexit.register(cleanup)
 # 15. 启动 Flask
 # =========================================================
 
-if _name_ == "_main_":
+if __name__ == "__main__":
 
     # 先尝试连接电子秤
     if client.connect():
