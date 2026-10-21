@@ -30,7 +30,7 @@ NUM_PIXELS = 100
 LED_BRIGHTNESS = 0.2
 
 # 蓝色 LED
-LED_COLOR = (255, 140, 0)
+LED_COLOR = (255, 40, 0)
 
 # 动画参数
 ANIMATION_FPS = 30          # 每秒刷新 30 次
