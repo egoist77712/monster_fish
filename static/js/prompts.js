@@ -105,7 +105,7 @@ window.PROMPTS = (() => {
   const BABY_FISH_KG = 5;
 
   // "一样重"的容差:人体重量会有一两公斤的抖动,不可能要求分毫不差
-  const SAME_TOLERANCE = 0.03;
+  const SAME_TOLERANCE = 0.5;
 
   /**
    * 根据抓取到的重量,决定显示哪一屏。
@@ -124,7 +124,7 @@ window.PROMPTS = (() => {
     if (w < BABY_FISH_KG) return { ...BABY };
 
     for (const fish of FISH) {
-      if (Math.abs(w - fish.kg) <= fish.kg * SAME_TOLERANCE) {
+      if ( fish.kg - w <= fish.kg * SAME_TOLERANCE && fish.kg - w >=0) {
         return {
           band: 'same',
           headline: fish.sameHeadline,
@@ -137,7 +137,7 @@ window.PROMPTS = (() => {
     }
 
     for (const fish of FISH) {
-      if (w < fish.kg) {
+      if (w < fish.kg* SAME_TOLERANCE) {
         return {
           band: 'almost',
           headline: null,
