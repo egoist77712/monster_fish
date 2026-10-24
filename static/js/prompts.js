@@ -1,18 +1,7 @@
-/* 展台上的 11 屏文案 —— 全部照客户 PDF 原文,连换行都是手写好的。
- *
- * 数据来源:Section 1_Interactive_MinnowOrMonster_TVPrompts.pdf
- *   * 11 屏 = 1 屏待机 + 10 屏结果(4 条鱼 × "almost / same" 两屏 + baby + beyond)
- *   * 鱼按体重升序排成阶梯,用来决定"你比哪条鱼重"。
- *
- * 这些文案以前在后端(prompts.py),现在搬到前端:后端只负责给重量,
- * 具体显示哪一屏由前端说了算。
- *
- * 科学名放在 emphasis 里,由 app.js 包成 <em> 以便单独设样式。
- */
+
 window.PROMPTS = (() => {
   'use strict';
 
-  // 体重阶梯(来自客户文档:"Weighing scale interactive discussed on 18092026")
   const FISH = [
     {
       num: 1,
@@ -26,6 +15,8 @@ window.PROMPTS = (() => {
       sameHeadline: 'EXCELLENT!',
       same: 'You weigh the same as the\nlargest recorded goonch\n'
             + '(Bagarius bagarius).',
+      almostMin: 0,
+      sameMin: 37.5,
     },
     {
       num: 2,
@@ -39,6 +30,8 @@ window.PROMPTS = (() => {
       sameHeadline: 'AMAZING!',
       same: 'You weigh the same as\nthe largest recorded\n'
             + 'American paddlefish\n(Polyodon spathula).',
+      almostMin: 75,
+      sameMin: 85,
     },
     {
       num: 3,
@@ -52,6 +45,8 @@ window.PROMPTS = (() => {
       sameHeadline: 'OUTSTANDING!',
       same: 'You weigh the same as\nthe largest recorded\n'
             + 'arapaima (Arapaima gigas).',
+      almostMin: 100,
+      sameMin: 150,
     },
     {
       num: 4,
@@ -65,6 +60,8 @@ window.PROMPTS = (() => {
       sameHeadline: 'SUPERB!',
       same: 'You weigh exactly the same as\nthe largest recorded giant barb\n'
             + '(Catlocarpio siamensis).',
+      almostMin: 200,
+      sameMin: 250,
     },
   ];
 
@@ -73,16 +70,6 @@ window.PROMPTS = (() => {
     headline: 'ARE\nYOU A\nMONSTER\nFISH?',
     text: 'Step up on the scale and\npush the button.',
     extra: null,
-    image: null,
-    emphasis: [],
-  };
-
-  const BABY = {
-    band: 'baby',
-    headline: null,
-    // 客户 PDF 里是 "Awww" + 省略号 + 句号
-    text: 'Awww\u2026. Just a\nsmall baby fish.',
-    extra: 'Hint: Grab some friends\nand try again.',
     image: null,
     emphasis: [],
   };
@@ -98,60 +85,63 @@ window.PROMPTS = (() => {
     emphasis: ['Urogymnus polylepis'],
   };
 
-  // 最重的一条鱼:超过它就不再有 "same" 档,直接进 "OUT OF THIS WORLD"
-  const MAX_RECORDED_KG = FISH[FISH.length - 1].kg;
+  const MAX_RECORDED_KG = 300;
 
-  // 低于这个体重显示 "small baby fish"(客户文档没给具体数值,这是经验值)
-  const BABY_FISH_KG = 5;
-
-  // "一样重"的容差:人体重量会有一两公斤的抖动,不可能要求分毫不差
-  const SAME_TOLERANCE = 0.5;
-
-  /**
-   * 根据抓取到的重量,决定显示哪一屏。
-   *
-   * 判定顺序(和客户文档一致):
-   *   1. > 300 kg        -> OUT OF THIS WORLD(没有比这更重的记录了)
-   *   2. < 20 kg         -> baby fish
-   *   3. 落在某条鱼 ±3%  -> "same"(EXCELLENT! / AMAZING! / ...)
-   *   4. 否则            -> "almost"(比下一条鱼轻多少)
-   */
   function resolve(weightKg) {
     const w = Number(weightKg);
 
-    if (w > MAX_RECORDED_KG) return { ...BEYOND };
-
-    if (w < BABY_FISH_KG) return { ...BABY };
-
-    for (const fish of FISH) {
-      if ( fish.kg - w <= fish.kg * SAME_TOLERANCE && fish.kg - w >=0) {
-        return {
-          band: 'same',
-          headline: fish.sameHeadline,
-          text: fish.same,
-          extra: null,
-          image: fish.image,
-          emphasis: [fish.scientific],
-        };
-      }
+    if (!Number.isFinite(w) || w < 0) {
+      return { ...IDLE };
     }
 
-    for (const fish of FISH) {
-      if (w < fish.kg* SAME_TOLERANCE) {
-        return {
-          band: 'almost',
-          headline: null,
-          text: fish.almost,
-          extra: null,
-          image: fish.image,
-          emphasis: [fish.scientific],
-        };
-      }
+    if (w > MAX_RECORDED_KG) {
+      return { ...BEYOND };
     }
 
-    // 理论上走不到这里(300 kg 及以下都被上面覆盖了),保底给 beyond
-    return { ...BEYOND };
+    let fish;
+    let band;
+
+    if (w < 37.5) {
+      fish = FISH[0];
+      band = 'almost';
+    } else if (w <= 75) {
+      fish = FISH[0];
+      band = 'same';
+    } else if (w < 85) {
+      fish = FISH[1];
+      band = 'almost';
+    } else if (w <= 100) {
+      fish = FISH[1];
+      band = 'same';
+    } else if (w < 150) {
+      fish = FISH[2];
+      band = 'almost';
+    } else if (w <= 200) {
+      fish = FISH[2];
+      band = 'same';
+    } else if (w < 250) {
+      fish = FISH[3];
+      band = 'almost';
+    } else {
+      fish = FISH[3];
+      band = 'same';
+    }
+
+    return {
+      band,
+      headline: band === 'same' ? fish.sameHeadline : null,
+      text: band === 'same' ? fish.same : fish.almost,
+      extra: null,
+      image: fish.image,
+      emphasis: [fish.scientific],
+    };
   }
 
-  return { FISH, IDLE, BABY, BEYOND, MAX_RECORDED_KG, BABY_FISH_KG, SAME_TOLERANCE, resolve };
+  return {
+    FISH,
+    IDLE,
+    BEYOND,
+    MAX_RECORDED_KG,
+    resolve,
+  };
 })();
