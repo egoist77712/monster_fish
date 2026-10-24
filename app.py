@@ -22,19 +22,26 @@ app = Flask(
 
 
 # =========================================================
-# 2. LED 灯带设置：蓝色平滑动画
+# 2. LED 灯带设置：120 颗 LED 对应 324 kg
 # =========================================================
 
 LED_PIN = board.D18
-NUM_PIXELS = 100
+NUM_PIXELS = 120
+
+# 最大对应重量：324 kg
+MAX_WEIGHT_KG = 324.0
+
+# 每颗 LED 代表的重量
+KG_PER_LED = MAX_WEIGHT_KG / NUM_PIXELS  # 2.7 kg
+
 LED_BRIGHTNESS = 0.2
 
-# 蓝色 LED
+# 保留原来的 LED 颜色设置
 LED_COLOR = (255, 40, 0)
 
 # 动画参数
-ANIMATION_FPS = 30          # 每秒刷新 30 次
-ANIMATION_SPEED = 35        # 每秒最多变化 35 颗 LED
+ANIMATION_FPS = 30
+ANIMATION_SPEED = 35
 ANIMATION_INTERVAL = 1.0 / ANIMATION_FPS
 
 pixels = neopixel.NeoPixel(
@@ -62,24 +69,44 @@ animation_thread = None
 
 def update_leds(weight):
     """
-    更新 LED 动画目标。
+    根据重量更新 LED 点亮数量。
 
-    每 1 kg 对应 1 颗 LED。
-    此函数只更新目标数量，不直接刷新灯带，
-    由动画线程负责平滑过渡。
+    120 颗 LED 对应 324 kg。
+    每颗 LED 对应 2.7 kg。
+
+    例如：
+        2.7 kg   -> 1 颗 LED
+        27 kg    -> 10 颗 LED
+        162 kg   -> 60 颗 LED
+        270 kg   -> 100 颗 LED
+        324 kg   -> 120 颗 LED
+
+    只更新目标数量，由动画线程平滑调整灯带。
     """
 
     global target_led_count
 
-    # 将重量限制在 0 至 100 kg
-    count = max(0.0, min(float(weight), float(NUM_PIXELS)))
+    weight = float(weight)
+
+    # 将重量限制在 0 至 324 kg
+    weight = max(0.0, min(weight, MAX_WEIGHT_KG))
+
+    # 换算为需要点亮的 LED 数量
+    count = weight / KG_PER_LED
+
+    # 限制在 0 至 120 颗
+    count = max(0.0, min(count, float(NUM_PIXELS)))
 
     with animation_lock:
         target_led_count = count
 
     print(
-        "重量: {:.1f} kg | 目标 LED: {:.1f}/{}".format(
-            weight, count, NUM_PIXELS
+        "重量: {:.1f} kg | 目标 LED: {:.1f}/{} | "
+        "每颗 LED: {:.2f} kg".format(
+            weight,
+            count,
+            NUM_PIXELS,
+            KG_PER_LED
         )
     )
 
