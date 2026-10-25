@@ -133,6 +133,11 @@ html, body {
   object-fit: contain;
   object-position: center;
 }
+
+#fish[src*="arapaima"] {
+  
+    transform: translateX(-50%) scale(0.7);
+}
 #fish[hidden] { display: none; }
 
 #screen[data-band="almost"] #fish { top: 25vh; }       /* deck p3: fish ink 483 */
