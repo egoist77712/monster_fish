@@ -640,7 +640,7 @@ def simulate_weight_api():
     except (TypeError, ValueError):
         return jsonify({
             "ok": False,
-            "error": "请传入数字重量，例如 {\\"kg\\": 80}"
+            "error": "请传入数字重量，例如 {"kg": 80}"
         }), 400
 
     if weight < 0 or weight > MAX_WEIGHT_KG:
