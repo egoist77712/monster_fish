@@ -139,9 +139,8 @@ html, body {
 #screen[data-band="same"]   #fish { top: 20.31vh; }   /* deck p4: fish ink 390 */
 
 #fish[src*="giant-barb"] {
-  height: 24.45vh;
   transform: translateX(-50%) scale(1.5);
-  top: 15vh !important;
+  top: 0 ;
   
   
 }
