@@ -138,9 +138,7 @@ html, body {
 #screen[data-band="almost"] #fish { top: 25vh; }       /* deck p3: fish ink 483 */
 #screen[data-band="same"]   #fish { top: 20.31vh; }   /* deck p4: fish ink 390 */
 
-#fish[src*="giant-barb"] {
-  transform: translateX(-50%) scale(1.5);
-}
+
 /* --------------------------------------------------------------- headline -- */
 #headline {
   margin: 0;                   /* h1 carries a 0.67em margin that would lift it */
@@ -320,14 +318,7 @@ html, body {
 #waiting {
   animation: fade-in var(--fade-copy-ms) ease-out both;
 }
-#screen[data-fish="giant-barb"] #headline {
-  transform: translateY(5vh) scaleX(var(--head-squeeze));
-}
 
-#screen[data-fish="giant-barb"] #text,
-#screen[data-fish="giant-barb"] #extra {
-  transform: translateY(100vh);
-}
 @keyframes fade-in {
   from { opacity: 0; }
   to   { opacity: 1; }
