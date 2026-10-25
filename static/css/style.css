@@ -326,7 +326,7 @@ html, body {
 
 #screen[data-fish="giant-barb"] #text,
 #screen[data-fish="giant-barb"] #extra {
-  transform: translateY(5vh);
+  transform: translateY(100vh);
 }
 @keyframes fade-in {
   from { opacity: 0; }
