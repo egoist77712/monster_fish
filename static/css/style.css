@@ -138,15 +138,16 @@ html, body {
 #screen[data-band="almost"] #fish { top: 25vh; }       /* deck p3: fish ink 483 */
 #screen[data-band="same"]   #fish { top: 20.31vh; }   /* deck p4: fish ink 390 */
 #screen[data-band="almost"] #fish[src*="giant-barb"] {
-    top: 15vh;
+    top: 5vh;
 }
 
 #screen[data-band="same"] #fish[src*="giant-barb"] {
-    top: 12vh;
+    top: 2vh;
 }
 #fish[src*="giant-barb"] {
   height: 24.45vh;
   transform: translateX(-50%) scale(1.5);
+  
 }
 /* --------------------------------------------------------------- headline -- */
 #headline {
