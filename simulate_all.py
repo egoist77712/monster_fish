@@ -16,6 +16,7 @@ UPDATE_INTERVAL = 0.5
 # 请根据你当前 app.js 的重量区间调整这些示例值。
 TEST_CASES = [
     ("Goonch - Almost", 10),
+    ("Goonch - Almost", 10),
     ("Goonch - Same", 50),
     ("American Paddlefish - Almost", 80),
     ("American Paddlefish - Same", 90),
