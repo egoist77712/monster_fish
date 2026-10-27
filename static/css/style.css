@@ -123,49 +123,34 @@ html, body {
 /* Out of flow on purpose: the deck floats the illustration above the copy
    instead of stacking it, so a 4-line result never pushes it off-centre.
    The box matches the deck's envelope (823 x 313) and each illustration is
-   contained, i.e. the goonch fills the height and the arapaima the width.
-
-   2026-10-26:两层叠放（#fish / #fish-alt），换鱼时由 app.js 让新层淡入、旧层淡出，
-   同一张图重复出现时完全不动；档位切换时 top 也做个短过渡，鱼不会"跳"一下。 */
-.fish-img {
+   contained, i.e. the goonch fills the height and the arapaima the width. */
+#fish {
   position: absolute;
   left: 50%;
-  width: 55vw;
-  height: 12vh;
+  width: 76.2vw;
+  height: 16.3vh;
   transform: translateX(-50%);
   object-fit: contain;
   object-position: center;
-  opacity: 0;
-  pointer-events: none;
-  transition:
-    opacity var(--fade-image-ms) ease-out,
-    top 420ms ease;
 }
 
-.fish-img.is-visible { opacity: 1; }
-
-/* 上层用于淡入的新图 */
-#fish-alt { z-index: 2; }
-.fish-img[src*="goonch"] {
-  transform: translateX(-50%) scale(0.5);
+#fish[src*="arapaima"] {
+  
+    transform: translateX(-50%) scale(0.7);
 }
-
-.fish-img[src*="american-paddlefish"] {
-  transform: translateX(-50%) scale(0.5);
+#fish[src*="american-paddlefish"] {
+  
+    transform: translateX(-50%) scale(0.7);
 }
-.fish-img[src*="arapaima"] {
-  transform: translateX(-50%) scale(0.5);
+#fish[src*="giant-barb"] {
+
+    transform: translateX(-50%) scale(1.2);
+
 }
+#fish[hidden] { display: none; }
 
-.fish-img[src*="giant-barb"] {
-  transform: translateX(-50%) scale(1);
-}
-
-
-.fish-img[hidden] { display: none; }
-
-#screen[data-band="almost"] .fish-img { top: 25vh; }       /* deck p3: fish ink 483 */
-#screen[data-band="same"]   .fish-img { top: 20.31vh; }   /* deck p4: fish ink 390 */
+#screen[data-band="almost"] #fish { top: 25vh; }       /* deck p3: fish ink 483 */
+#screen[data-band="same"]   #fish { top: 20.31vh; }   /* deck p4: fish ink 390 */
 
 
 /* --------------------------------------------------------------- headline -- */
@@ -331,10 +316,13 @@ html, body {
 
 /* ===================================================== 慢速淡入(切换效果) == */
 /* 客户 2026-10-20:"将目前直接切换图片的方式改为慢速淡入效果"。
-   鱼图的淡入淡出现在由 app.js 控制两层交叉过渡(.fish-img 的 opacity transition),
-   所以这里只保留文字的淡入 —— 文字内容一换就重播一次 700 ms 淡入。
-   2026-10-26:同一屏文字没变时不再重播，避免在档位边界来回闪。 */
+   app.js 在每次换屏时重启动画(reflow 一下再设回),所以同一套规则可以反复用。
+   图片慢一点(900 ms),文字稍快(700 ms)并错开 120 ms,看起来是"图先浮出来、
+   字随后跟上",而不是整屏同时闪一下。 */
 
+#fish {
+  animation: fade-in var(--fade-image-ms) ease-out both;
+}
 #headline,
 #text,
 #extra {
@@ -351,7 +339,6 @@ html, body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .fish-img { transition: none; }
-  #headline, #text, #extra, #waiting { animation: none; }
+  #fish, #headline, #text, #extra, #waiting { animation: none; }
   .waiting-dots i { animation: none; opacity: 0.6; }
 }
