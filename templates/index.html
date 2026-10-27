@@ -8,6 +8,41 @@
   <!-- 内嵌图标:展台机器不该为了一个 favicon 多发一次请求 -->
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23005338'/><circle cx='8' cy='8' r='4' fill='%23AADFF6'/></svg>">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <style>
+.fish-img {
+  position: absolute;
+  left: 50%;
+  width: 55vw;
+  height: 12vh;
+  transform: translateX(-50%);
+  object-fit: contain;
+  object-position: center;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity var(--fade-image-ms) ease-out,
+    top 420ms ease;
+}
+
+.fish-img.is-visible { opacity: 1; }
+
+/* 上层用于淡入的新图 */
+#fish-alt { z-index: 2; }
+.fish-img[src*="goonch"] {
+  transform: translateX(-50%) scale(0.5);
+}
+
+.fish-img[src*="american-paddlefish"] {
+  transform: translateX(-50%) scale(0.5);
+}
+.fish-img[src*="arapaima"] {
+  transform: translateX(-50%) scale(0.5);
+}
+
+.fish-img[src*="giant-barb"] {
+  transform: translateX(-50%) scale(1);
+}
+</style>
 </head>
 <body>
 
