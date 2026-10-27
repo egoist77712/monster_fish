@@ -130,9 +130,9 @@ html, body {
 .fish-img {
   position: absolute;
   left: 50%;
-  width: 76.2vw;
-  height: 16.3vh;
-  transform: translateX(-50%) scale(0.75);;
+  width: 55vw;
+  height: 12vh;
+  transform: translateX(-50%);
   object-fit: contain;
   object-position: center;
   opacity: 0;
@@ -146,16 +146,21 @@ html, body {
 
 /* 上层用于淡入的新图 */
 #fish-alt { z-index: 2; }
+.fish-img[src*="goonch"] {
+  transform: translateX(-50%) scale(0.5);
+}
 
-.fish-img[src*="arapaima"] {
-  transform: translateX(-50%) scale(0.7);
-}
 .fish-img[src*="american-paddlefish"] {
-  transform: translateX(-50%) scale(0.7);
+  transform: translateX(-50%) scale(0.5);
 }
+.fish-img[src*="arapaima"] {
+  transform: translateX(-50%) scale(0.5);
+}
+
 .fish-img[src*="giant-barb"] {
-  transform: translateX(-50%) scale(1.2);
+  transform: translateX(-50%) scale(1);
 }
+
 
 .fish-img[hidden] { display: none; }
 
