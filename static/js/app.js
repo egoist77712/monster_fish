@@ -1,38 +1,32 @@
 
 /*
- * 展台前端：轮询后端，按重量区间切换页面。
+ * Minnow or Monster - 前端事件驱动版本
  *
- * GET  /api/weight  实时重量 + 稳定状态
- * GET  /api/capture 抓取重量 + 会话状态
- * GET  /api/button  按钮状态（调试 / Postman）
+ * 不再定时轮询 /api/capture 和 /api/weight。
  *
- * 交互流程：
- * 1. 显示主页面。
- * 2. POST /api/button 开始会话，显示 Weighing 等待动画。
- * 3. 灯带动画结束且重量稳定后，切换到结果页。
- * 4. 重量区间变化时，切换到对应结果页。
- * 5. 连续 5 秒低于 5 kg，由后端结束会话并返回主页面。
- * 6. 会话开始后超过 120 秒，自动停止并返回主页面。
+ * GET  /api/events  建立 SSE 事件连接
+ * POST /api/stop    超时后停止称重
  *
- * 页面不显示调试或操作控件。
+ * 后端推送的事件：
+ * session_start -> 实体按钮启动称重
+ * weight        -> 新的重量数据
+ * session_end   -> 称重结束
+ * status        -> 连接建立时的当前会话状态
  */
 
 (() => {
   'use strict';
 
-  // --------------------------------------------------
+  // ==================================================
   // 1. 配置
-  // --------------------------------------------------
+  // ==================================================
 
-  const POLL_MS = 120;
-
-  // 低于此重量视为秤上没人
   const EMPTY_KG = 5;
 
-  // 灯带动画最短等待时间
+  // LED 动画最短等待时间
   const LED_ANIMATION_MS = 2600;
 
-  // 重量一直不稳定时的等待上限
+  // 最长等待时间
   const LED_ANIMATION_MAX_MS = 8000;
 
   // 等待动画淡出时间
@@ -41,15 +35,18 @@
   // 会话总时长：2 分钟
   const SESSION_TIMEOUT_MS = 120000;
 
+  // 重量稳定判断
+  const STABLE_THRESHOLD_KG = 0.2;
+  const STABLE_DURATION_MS = 1000;
+
   const API = {
-    capture: '/api/capture',
-    weight: '/api/weight',
+    events: '/api/events',
     stop: '/api/stop'
   };
 
-  // --------------------------------------------------
+  // ==================================================
   // 2. 获取页面元素
-  // --------------------------------------------------
+  // ==================================================
 
   const $ = (id) => document.getElementById(id);
 
@@ -62,7 +59,6 @@
     waiting: $('waiting')
   };
 
-  // 如果 HTML 缺少必要元素，避免继续执行导致错误
   if (Object.values(el).some((node) => !node)) {
     console.error(
       '前端初始化失败：请检查 index.html 中的 screen、fish、headline、text、extra、waiting 元素。'
@@ -70,33 +66,41 @@
     return;
   }
 
-  // --------------------------------------------------
+  if (!window.PROMPTS || typeof window.PROMPTS.resolve !== 'function') {
+    console.error('前端初始化失败：PROMPTS 或 resolve() 不存在。');
+    return;
+  }
+
+  // ==================================================
   // 3. 前端状态
-  // --------------------------------------------------
+  // ==================================================
 
   let phase = 'idle'; // idle | waiting | result
 
-  let lastSeq = -1;
   let lastKey = '';
 
   let waitStart = 0;
-
-  // 当前会话在前端开始计时的时间
   let sessionStartTime = 0;
 
   let pendingKg = null;
 
-  let waitHideTimer = null;
+  let lastSeq = -1;
 
-  // 防止超时后重复发送停止请求
+  let lastObservedKg = null;
+  let lastWeightChangeTime = 0;
+
+  let waitHideTimer = null;
+  let timeoutTimer = null;
+
   let timeoutStopSent = false;
 
-  // 这些重量区间使用 flow 布局
+  let eventSource = null;
+
   const FLOW_BANDS = ['almost', 'same', 'beyond'];
 
-  // --------------------------------------------------
-  // 4. 安全处理文本和强调文字
-  // --------------------------------------------------
+  // ==================================================
+  // 4. 安全处理文字
+  // ==================================================
 
   function rich(text, emphasis) {
     let html = String(text == null ? '' : text)
@@ -113,7 +117,7 @@
       );
 
       html = html.replace(
-        new RegExp(`(${safe})`),
+        new RegExp(`(${safe})`, 'g'),
         '<em>$1</em>'
       );
     });
@@ -121,9 +125,9 @@
     return html;
   }
 
-  // --------------------------------------------------
-  // 5. 重新触发淡入动画
-  // --------------------------------------------------
+  // ==================================================
+  // 5. 页面淡入动画
+  // ==================================================
 
   function animateIn(nodes) {
     nodes.forEach((node) => {
@@ -131,22 +135,19 @@
 
       node.style.animation = 'none';
 
-      // 强制浏览器重新计算布局
       void node.offsetWidth;
 
-      // 恢复 CSS 动画
       node.style.animation = '';
     });
   }
 
-  // --------------------------------------------------
-  // 6. 等待动画淡出
-  // --------------------------------------------------
+  // ==================================================
+  // 6. 隐藏等待动画
+  // ==================================================
 
   function fadeOutWaiting() {
     if (el.waiting.hidden) return;
 
-    // 已经在淡出就不重复执行
     if (el.waiting.classList.contains('leaving')) return;
 
     el.waiting.classList.add('leaving');
@@ -159,15 +160,14 @@
     }, WAIT_FADE_OUT_MS);
   }
 
-  // --------------------------------------------------
-  // 7. 绘制主页面或结果页面
-  // --------------------------------------------------
+  // ==================================================
+  // 7. 绘制页面
+  // ==================================================
 
   function paint(prompt) {
     const p = prompt || window.PROMPTS.IDLE;
     const band = p.band || 'idle';
 
-    // 先淡出等待动画
     fadeOutWaiting();
 
     const key = [
@@ -179,7 +179,7 @@
       JSON.stringify(p.emphasis || [])
     ].join('|');
 
-    // 内容没有变化时不重复重绘
+    // 页面内容没有变化时，不重复渲染
     if (key === lastKey) return;
 
     lastKey = key;
@@ -192,7 +192,7 @@
     el.screen.dataset.layout =
       FLOW_BANDS.includes(band) ? 'flow' : 'abs';
 
-    // 鱼图
+    // 鱼类图片
     if (p.image) {
       el.fish.src = `/static/${p.image}`;
       el.fish.hidden = false;
@@ -213,7 +213,6 @@
     el.extra.innerHTML = rich(p.extra, p.emphasis);
     el.extra.hidden = !p.extra;
 
-    // 新页面淡入
     animateIn([
       el.fish,
       el.headline,
@@ -222,9 +221,9 @@
     ]);
   }
 
-  // --------------------------------------------------
-  // 8. 显示 Weighing 等待动画
-  // --------------------------------------------------
+  // ==================================================
+  // 8. 显示等待动画
+  // ==================================================
 
   function showWaiting() {
     el.fish.hidden = true;
@@ -248,11 +247,25 @@
     animateIn([el.waiting]);
   }
 
-  // --------------------------------------------------
-  // 9. 返回主页面
-  // --------------------------------------------------
+  // ==================================================
+  // 9. 清理会话计时器
+  // ==================================================
+
+  function clearSessionTimers() {
+    clearTimeout(waitHideTimer);
+    clearTimeout(timeoutTimer);
+
+    waitHideTimer = null;
+    timeoutTimer = null;
+  }
+
+  // ==================================================
+  // 10. 返回待机页面
+  // ==================================================
 
   function enterIdle() {
+    clearSessionTimers();
+
     phase = 'idle';
 
     pendingKg = null;
@@ -260,121 +273,130 @@
     sessionStartTime = 0;
     waitStart = 0;
 
+    lastSeq = -1;
+
+    lastObservedKg = null;
+    lastWeightChangeTime = 0;
+
     timeoutStopSent = false;
 
-    paint(null);
+    paint(window.PROMPTS.IDLE);
   }
 
-  // --------------------------------------------------
-  // 10. 开始等待动画
-  // --------------------------------------------------
+  // ==================================================
+  // 11. 启动会话
+  // ==================================================
 
   function enterWaiting() {
+    // 防止重复的 session_start 事件重新启动动画
+    if (phase !== 'idle') return;
+
     phase = 'waiting';
 
     waitStart = Date.now();
-
-    // 从检测到新会话时开始计时
     sessionStartTime = Date.now();
 
     pendingKg = null;
 
+    lastSeq = -1;
+
+    lastObservedKg = null;
+    lastWeightChangeTime = Date.now();
+
     timeoutStopSent = false;
 
     showWaiting();
+
+    // 前端超时保护
+    timeoutTimer = setTimeout(() => {
+      handleTimeout();
+    }, SESSION_TIMEOUT_MS);
   }
 
-  // --------------------------------------------------
-  // 11. 显示结果页
-  // --------------------------------------------------
+  // ==================================================
+  // 12. 判断重量是否稳定
+  // ==================================================
+
+  function isWeightStable(now) {
+    if (pendingKg == null || lastObservedKg == null) {
+      return false;
+    }
+
+    return (
+      now - lastWeightChangeTime >= STABLE_DURATION_MS
+    );
+  }
+
+  // ==================================================
+  // 13. 显示称重结果
+  // ==================================================
 
   function enterResult(kg) {
-    if (kg == null || kg < EMPTY_KG) return;
+    if (kg == null || !Number.isFinite(Number(kg))) return;
+
+    if (Number(kg) < EMPTY_KG) return;
 
     phase = 'result';
 
-    paint(window.PROMPTS.resolve(kg));
+    paint(window.PROMPTS.resolve(Number(kg)));
   }
 
-  // --------------------------------------------------
-  // 12. 根据重量切换结果页
-  // --------------------------------------------------
+  // ==================================================
+  // 14. 更新结果页面
+  // ==================================================
 
   function showForWeight(kg) {
-    if (kg == null || kg < EMPTY_KG) return;
+    if (kg == null || !Number.isFinite(Number(kg))) return;
 
-    paint(window.PROMPTS.resolve(kg));
+    if (Number(kg) < EMPTY_KG) return;
+
+    paint(window.PROMPTS.resolve(Number(kg)));
   }
 
-  // --------------------------------------------------
-  // 13. 两分钟超时保护
-  // --------------------------------------------------
+  // ==================================================
+  // 15. 接收重量事件
+  // ==================================================
 
-  function handleTimeout() {
-    // 立即回到主页面
-    enterIdle();
+  function handleWeight(data) {
+    if (phase === 'idle') return;
 
-    // 只向后端发送一次停止请求
-    if (!timeoutStopSent) {
-      timeoutStopSent = true;
-
-      fetch(API.stop, {
-        method: 'POST',
-        cache: 'no-store'
-      }).catch(() => {
-        // 请求失败时不显示提示，后端也有自己的超时保护
-      });
-    }
-  }
-
-  // --------------------------------------------------
-  // 14. 处理后端数据
-  // --------------------------------------------------
-
-  function handle(captureSnap, weightSnap) {
-    // 后端会话结束，回到主页面
-    if (!captureSnap.active) {
-      if (phase !== 'idle') {
-        enterIdle();
-      }
-
+    if (data.active === false) {
+      enterIdle();
       return;
     }
 
-    // 前端 120 秒超时保护
+    const kg = Number(data.kg);
+
+    if (!Number.isFinite(kg) || kg < 0) return;
+
+    // 如果后端提供序号，则忽略重复或过期的数据
+    if (Number.isFinite(Number(data.seq))) {
+      const seq = Number(data.seq);
+
+      if (seq <= lastSeq) return;
+
+      lastSeq = seq;
+    }
+
+    const now = Date.now();
+
+    // 检查重量变化
     if (
-      phase !== 'idle' &&
-      sessionStartTime > 0 &&
-      Date.now() - sessionStartTime >= SESSION_TIMEOUT_MS
+      lastObservedKg === null ||
+      Math.abs(kg - lastObservedKg) > STABLE_THRESHOLD_KG
     ) {
-      handleTimeout();
-      return;
+      lastWeightChangeTime = now;
     }
 
-    // 从主页面进入等待动画
-    if (phase === 'idle') {
-      enterWaiting();
-    }
+    lastObservedKg = kg;
+    pendingKg = kg;
 
-    // 保存最新抓取重量
-    if (captureSnap.seq !== lastSeq) {
-      lastSeq = captureSnap.seq;
-      pendingKg = captureSnap.kg;
-    }
-
-    // ----------------------------------------------
     // 等待阶段
-    // ----------------------------------------------
-
     if (phase === 'waiting') {
-      const elapsed = Date.now() - waitStart;
+      const elapsed = now - waitStart;
 
-      const stable = Boolean(
-        weightSnap && weightSnap.stable
-      );
+      const stable = isWeightStable(now);
 
-      // 至少等够灯带动画时间，并等待重量稳定；
-      // 8 秒后作为兜底，不再无限等待稳定状态。
       const lightsDone =
         elapsed >= LED_ANIMATION_MS &&
         (
@@ -384,70 +406,144 @@
 
       if (!lightsDone) return;
 
-      const kg =
-        pendingKg != null
-          ? pendingKg
-          : (weightSnap ? weightSnap.kg : null);
-
-      // 还没有人站上秤，继续等待
-      if (kg == null || kg < EMPTY_KG) return;
+      // 秤上还没有人，继续等待
+      if (kg < EMPTY_KG) return;
 
       enterResult(kg);
       return;
     }
 
-    // ----------------------------------------------
-    // 结果阶段
-    // ----------------------------------------------
-
-    if (phase === 'result' && pendingKg != null) {
-      showForWeight(pendingKg);
+    // 结果阶段：重量变化时才更新页面
+    if (phase === 'result') {
+      showForWeight(kg);
     }
   }
 
-  // --------------------------------------------------
-  // 15. 获取 JSON
-  // --------------------------------------------------
+  // ==================================================
+  // 16. 处理超时
+  // ==================================================
 
-  async function get(url) {
-    const response = await fetch(url, {
+  function handleTimeout() {
+    if (phase === 'idle') return;
+
+    // 先回到待机页面
+    enterIdle();
+
+    // 只发送一次停止请求
+    if (timeoutStopSent) return;
+
+    timeoutStopSent = true;
+
+    fetch(API.stop, {
+      method: 'POST',
       cache: 'no-store'
+    }).catch(() => {
+      // 请求失败时保持页面待机
+    });
+  }
+
+  // ==================================================
+  // 17. 处理后端事件
+  // ==================================================
+
+  function handleSessionEnd() {
+    if (phase !== 'idle') {
+      enterIdle();
+    }
+  }
+
+  function handleStatus(data) {
+    // 浏览器重新连接 SSE 时，同步当前会话状态
+    if (data.active) {
+      if (phase === 'idle') {
+        enterWaiting();
+      }
+
+      if (data.kg != null) {
+        handleWeight({
+          active: true,
+          kg: data.kg,
+          seq: data.seq
+        });
+      }
+    } else if (phase !== 'idle') {
+      enterIdle();
+    }
+  }
+
+  // ==================================================
+  // 18. 建立 SSE 连接
+  // ==================================================
+
+  function connectEvents() {
+    if (!('EventSource' in window)) {
+      console.error(
+        '当前浏览器不支持 SSE，无法接收实时称重事件。'
+      );
+      return;
+    }
+
+    eventSource = new EventSource(API.events);
+
+    // 建立连接时，后端发送当前状态
+    eventSource.addEventListener('status', (event) => {
+      try {
+        handleStatus(JSON.parse(event.data));
+      } catch (error) {
+        console.error('解析 status 事件失败：', error);
+      }
     });
 
-    if (!response.ok) {
-      throw new Error(`${url} -> ${response.status}`);
-    }
+    // 实体按钮启动称重
+    eventSource.addEventListener('session_start', (event) => {
+      try {
+        const data = JSON.parse(event.data);
 
-    return response.json();
+        if (data.active !== false && phase === 'idle') {
+          enterWaiting();
+        }
+      } catch (error) {
+        console.error('解析 session_start 事件失败：', error);
+      }
+    });
+
+    // 新重量到达
+    eventSource.addEventListener('weight', (event) => {
+      try {
+        handleWeight(JSON.parse(event.data));
+      } catch (error) {
+        console.error('解析 weight 事件失败：', error);
+      }
+    });
+
+    // 会话结束
+    eventSource.addEventListener('session_end', () => {
+      handleSessionEnd();
+    });
+
+    eventSource.onerror = () => {
+      // EventSource 会自动尝试重新连接
+      // 不需要使用 setInterval 重复发送 GET 请求
+    };
   }
 
-  // --------------------------------------------------
-  // 16. 轮询后端
-  // --------------------------------------------------
-
-  async function poll() {
-    try {
-      const [captureSnap, weightSnap] = await Promise.all([
-        get(API.capture),
-        get(API.weight)
-      ]);
-
-      handle(captureSnap, weightSnap);
-    } catch (error) {
-      // 网络请求失败时保持现有页面，下一轮继续尝试
-      console.warn('轮询失败：', error);
-    } finally {
-      setTimeout(poll, POLL_MS);
-    }
-  }
-
-  // --------------------------------------------------
-  // 17. 初始化
-  // --------------------------------------------------
+  // ==================================================
+  // 19. 初始化
+  // ==================================================
 
   enterIdle();
 
-  // 开始轮询
-  poll();
+  // 只建立一个事件连接，不再启动轮询
+  connectEvents();
+
+  // 页面关闭时释放连接
+  window.addEventListener('pagehide', () => {
+    if (eventSource) {
+      eventSource.close();
+      eventSource = null;
+    }
+
+    clearSessionTimers();
+  });
 
 })();
