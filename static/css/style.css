@@ -132,7 +132,7 @@ html, body {
   left: 50%;
   width: 76.2vw;
   height: 16.3vh;
-  transform: translateX(-50%);
+  transform: translateX(-50%) scale(0.75);;
   object-fit: contain;
   object-position: center;
   opacity: 0;
