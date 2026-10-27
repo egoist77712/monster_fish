@@ -27,7 +27,7 @@
   const LED_ANIMATION_MS = 2600;
 
   // 最长等待时间
-  const LED_ANIMATION_MAX_MS = 8000;
+  const LED_ANIMATION_MAX_MS = 2000;
 
   // 等待动画淡出时间
   const WAIT_FADE_OUT_MS = 240;
