@@ -1,4 +1,4 @@
-```javascript
+
 /* 展台上的 11 屏文案 —— 全部照客户 PDF 原文,连换行都是手写好的。
  *
  * 数据来源:Section 1_Interactive_MinnowOrMonster_TVPrompts.pdf
@@ -194,4 +194,4 @@ window.PROMPTS = (() => {
   };
 
 })();
-```
+
