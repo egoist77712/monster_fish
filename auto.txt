@@ -1,0 +1,291 @@
+可以。你的树莓派 4 可以设置成**开机自动启动 Flask 后端 `app.py`，然后自动打开浏览器，访问 `http://127.0.0.1:8080`，并进入全屏模式**。
+
+针对你的 `monster_fish` 展示项目，我建议使用 **Linux systemd + Chromium 全屏启动**。这样比单纯把命令放进开机启动文件更稳定，适合展台长时间运行。
+
+整个启动流程如下：
+
+1. 树莓派开机。
+2. 自动启动 `monster_fish` 项目的 Flask 服务。
+3. 自动打开 Chromium 浏览器。
+4. 浏览器访问 `http://127.0.0.1:8080`。
+5. 浏览器自动进入全屏模式，显示你的 **Minnow or Monster** 展示页面。
+
+**关于密码：** 不建议把你的登录密码 `81682536` 写进自动启动脚本。我们可以通过 Linux 的 `systemd` 配置，让程序在启动时自动获得所需权限，不必每次开机都输入密码。这样也更安全。
+
+下面按照新手可以直接操作的方式配置。
+
+# 第一步：确认项目位置
+
+先在树莓派打开终端，输入：
+
+```bash
+cd ~/monster_fish
+pwd
+```
+
+正常情况下会显示：
+
+```text
+/home/joytech/monster_fish
+```
+
+如果显示的路径不一样，先记下实际路径，后面需要替换。
+
+确认 `app.py` 存在：
+
+```bash
+ls
+```
+
+应该可以看到 `app.py`。
+
+---
+
+# 第二步：设置 Flask 开机自动启动
+
+我们先让树莓派开机后自动运行：
+
+```bash
+sudo python3 app.py
+```
+
+以后就不需要你手动输入密码启动了。
+
+### 1. 创建自动启动服务
+
+输入：
+
+```bash
+sudo nano /etc/systemd/system/monster-fish.service
+```
+
+将下面的内容完整复制进去：
+
+[Unit]
+Description=Minnow or Monster Flask Application
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/joytech/monster_fish
+ExecStart=/usr/bin/python3 /home/joytech/monster_fish/app.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+
+**注意：** 上面假设你的项目路径是 `/home/joytech/monster_fish`。如果第一步显示的路径不同，请替换 `WorkingDirectory` 和 `ExecStart` 中的路径。
+
+这个配置会让程序以 root 权限运行，因此不需要在启动时输入 `sudo` 密码。不过，使用 root 运行 Flask 会增加安全风险，建议只用于你控制的展台设备，并且不要将服务暴露到不可信的网络。
+
+### 2. 保存文件
+
+在 nano 编辑器中：
+
+1. 按 `Ctrl + O`。
+2. 按 `Enter`。
+3. 按 `Ctrl + X`。
+
+### 3. 启用开机自动启动
+
+依次执行以下命令：
+
+```bash
+sudo systemctl daemon-reload
+```
+
+```bash
+sudo systemctl enable monster-fish.service
+```
+
+立即启动程序：
+
+```bash
+sudo systemctl start monster-fish.service
+```
+
+查看运行状态：
+
+```bash
+sudo systemctl status monster-fish.service
+```
+
+如果看到：
+
+```text
+Active: active (running)
+```
+
+说明服务正在运行。
+
+现在，你可以在树莓派的浏览器中访问：
+
+`http://127.0.0.1:8080`
+
+如果打不开，先查看日志：
+
+```bash
+sudo journalctl -u monster-fish.service -n 50 --no-pager
+```
+
+---
+
+# 第三步：设置浏览器自动全屏
+
+接下来配置桌面启动程序，让树莓派进入桌面后自动打开 Chromium。
+
+### 1. 先确认浏览器命令
+
+在终端执行：
+
+```bash
+which chromium
+```
+
+如果没有输出，再执行：
+
+```bash
+which chromium-browser
+```
+
+树莓派系统版本不同，浏览器命令可能不同。
+
+例如，如果输出：
+
+```text
+/usr/bin/chromium
+```
+
+后面就使用 `chromium`。
+
+### 2. 创建浏览器启动脚本
+
+执行：
+
+```bash
+nano ~/start-monster-fish-browser.sh
+```
+
+复制以下完整代码：
+
+#!/bin/bash
+
+# Wait until the Flask application is available
+echo "Waiting for Minnow or Monster..."
+
+until curl -fsS http://127.0.0.1:8080/ >/dev/null 2>&1; do
+    sleep 2
+done
+
+# Give the desktop a moment to settle
+sleep 3
+
+# Launch Chromium in full-screen kiosk mode
+/usr/bin/chromium \
+    --kiosk \
+    --noerrdialogs \
+    --disable-infobars \
+    --disable-session-crashed-bubble \
+    --no-first-run \
+    http://127.0.0.1:8080
+
+**注意：** 如果你的浏览器实际路径是 `/usr/bin/chromium-browser`，请把脚本最后部分的 `/usr/bin/chromium` 替换为 `/usr/bin/chromium-browser`。
+
+保存文件：按 `Ctrl + O`、`Enter`、`Ctrl + X`。
+
+然后赋予执行权限：
+
+```bash
+chmod +x ~/start-monster-fish-browser.sh
+```
+
+这个脚本会先等待 Flask 服务正常响应，再打开浏览器，因此比固定等待几秒更可靠。
+
+### 3. 设置桌面自动运行
+
+创建自动启动目录：
+
+```bash
+mkdir -p ~/.config/autostart
+```
+
+创建启动配置：
+
+```bash
+nano ~/.config/autostart/monster-fish.desktop
+```
+
+复制以下内容：
+
+[Desktop Entry]
+Type=Application
+Name=Minnow or Monster Kiosk
+Comment=Launch Minnow or Monster in full-screen mode
+Exec=/home/joytech/start-monster-fish-browser.sh
+Terminal=false
+X-GNOME-Autostart-enabled=true
+
+保存并退出。
+
+如果你的 Linux 用户名不是 `joytech`，请把 `Exec` 路径替换成实际的用户主目录。
+
+这样，当该用户登录图形桌面时，系统就会自动执行浏览器启动脚本。
+
+---
+
+# 第四步：确认树莓派开启了自动登录
+
+这一步非常重要。
+
+如果树莓派开机后停留在登录界面，桌面自动启动脚本就不会执行。
+
+在树莓派桌面中打开：
+
+**Preferences → Raspberry Pi Configuration → System**
+
+如果系统提供 `Auto Login` 选项，请选择自动登录桌面用户的选项。
+
+不同版本的 Raspberry Pi OS 界面可能不同。如果没有这个选项，可以通过系统的配置工具检查登录设置。
+
+设置好后，重启树莓派：
+
+```bash
+sudo reboot
+```
+
+重启后，你应该能看到：
+
+1. 树莓派自动启动。
+2. Flask 服务自动运行。
+3. 系统自动进入桌面。
+4. Chromium 自动打开。
+5. 浏览器全屏显示 `http://127.0.0.1:8080`。
+
+**提示：** `--kiosk` 是 Chromium 的展台模式，通常不会显示浏览器标签栏和地址栏。退出时，可以尝试按 `Alt + F4`。
+
+---
+
+# 第五步：测试是否真正实现无人值守启动
+
+建议你做一次完整测试：
+
+| 测试项目 | 测试方法 | 预期结果 |
+|---|---|---|
+| Flask 自动启动 | 重启树莓派 | 不需要手动执行 `app.py` |
+| 无须输入 sudo 密码 | 重启后观察 | 不出现 sudo 密码提示 |
+| 浏览器自动打开 | 等待桌面加载 | Chromium 自动启动 |
+| 自动全屏 | 查看浏览器 | 没有地址栏和标签栏 |
+| 页面正常加载 | 查看展台画面 | 显示 Minnow or Monster |
+| 服务异常恢复 | 查看 systemd 状态 | 程序退出后会尝试重新启动 |
+
+需要注意：`Restart=always` 只会在 Flask 进程退出时尝试重启服务。如果程序持续运行但内部出现故障，或者浏览器自身崩溃，还需要额外的监控机制。
+
+## 最后一个重要问题
+
+你之前说过，你的树莓派 4 会出现**屏幕熄灭后需要移动鼠标才能恢复**的情况。
+
+为了让展台真正实现 24 小时运行，除了上述自动启动配置，还应该关闭屏幕自动熄灭和屏幕保护，并确认显示器不会因为自身设置进入待机。
+
+完成这些配置后，建议先重启测试一次，确认系统可以自行恢复到全屏展台页面，再投入正式使用。
