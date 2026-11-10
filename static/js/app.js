@@ -105,28 +105,29 @@
   // 4. 安全处理文字
   // ==================================================
 
-  function rich(text, emphasis) {
-    let html = String(text == null ? '' : text)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
+function rich(text, emphasis = []) {
+  let html = String(text ?? '');
 
-    (emphasis || []).forEach((name) => {
-      if (!name) return;
+  // Escape HTML characters
+  html = html.replace(/[&<>"']/g, char => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  })[char]);
 
-      const safe = String(name).replace(
-        /[.*+?^${}()|[\]\\]/g,
-        '\\$&'
-      );
-
-      html = html.replace(
-        new RegExp(`(${safe})`, 'g'),
-        '<em>$1</em>'
-      );
-    });
-
-    return html;
+  // Convert emphasized words into italic HTML
+  for (const word of emphasis) {
+    const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    html = html.replace(
+      new RegExp(escaped, 'gi'),
+      '<em>$&</em>'
+    );
   }
+
+  return html;
+}
 
   // ==================================================
   // 5. 页面淡入动画
