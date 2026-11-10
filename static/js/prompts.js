@@ -109,7 +109,12 @@ window.PROMPTS = (() => {
     extra: 'The largest ever recorded\nfreshwater fish was a\n'
            + 'giant freshwater stingray\n(Urogymnus polylepis)\ncaught in 2022.',
     image: null,
-    emphasis: ['Urogymnus polylepis'],
+
+    // Common name + Scientific name
+    emphasis: [
+      'giant freshwater stingray',
+      'Urogymnus polylepis',
+    ],
   };
 
   // =========================================================
@@ -155,7 +160,9 @@ window.PROMPTS = (() => {
           text: fish.same,
           extra: null,
           image: fish.image,
-          emphasis: [fish.scientific],
+
+          // Common name + Scientific name
+          emphasis: [fish.name, fish.scientific],
         };
       }
 
@@ -167,7 +174,9 @@ window.PROMPTS = (() => {
           text: fish.almost,
           extra: null,
           image: fish.image,
-          emphasis: [fish.scientific],
+
+          // Common name + Scientific name
+          emphasis: [fish.name, fish.scientific],
         };
       }
 
@@ -194,4 +203,3 @@ window.PROMPTS = (() => {
   };
 
 })();
-
