@@ -94,6 +94,9 @@
 
   let timeoutStopSent = false;
 
+  // 用户下称后，等待下一位用户重新达到 10 kg
+  let returningAfterStepOff = false;
+
   let eventSource = null;
 
   const FLOW_BANDS = ['almost', 'same', 'beyond'];
@@ -279,6 +282,7 @@
     lastWeightChangeTime = 0;
 
     timeoutStopSent = false;
+    returningAfterStepOff = false;
 
     paint(window.PROMPTS.IDLE);
   }
@@ -304,6 +308,7 @@
     lastWeightChangeTime = Date.now();
 
     timeoutStopSent = false;
+    returningAfterStepOff = false;
 
     showWaiting();
 
@@ -391,7 +396,10 @@
     lastObservedKg = kg;
     pendingKg = kg;
 
+    // -------------------------------------------------
     // 等待阶段
+    // -------------------------------------------------
+
     if (phase === 'waiting') {
       const elapsed = now - waitStart;
 
@@ -406,15 +414,45 @@
 
       if (!lightsDone) return;
 
-      // 秤上还没有人，继续等待
+      // 用户下称后返回称重页时：
+      // 必须等到重量重新达到 10 kg
+      if (returningAfterStepOff) {
+        if (kg < 10) return;
+
+        returningAfterStepOff = false;
+      }
+
+      // 初次称重仍沿用原本的空秤判断
       if (kg < EMPTY_KG) return;
 
       enterResult(kg);
       return;
     }
 
-    // 结果阶段：重量变化时才更新页面
+    // -------------------------------------------------
+    // 结果阶段
+    // -------------------------------------------------
+
     if (phase === 'result') {
+
+      // 已经显示结果后，重量低于 10 kg：
+      // 直接返回 WEIGHTING，不显示 BABY
+      if (kg < 10) {
+        phase = 'waiting';
+
+        waitStart = now;
+
+        pendingKg = kg;
+        lastObservedKg = kg;
+        lastWeightChangeTime = now;
+
+        returningAfterStepOff = true;
+
+        showWaiting();
+        return;
+      }
+
+      // 重量仍然 >= 10 kg，正常更新结果
       showForWeight(kg);
     }
   }
