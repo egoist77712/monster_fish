@@ -110,10 +110,8 @@ window.PROMPTS = (() => {
            + 'giant freshwater stingray\n(Urogymnus polylepis)\ncaught in 2022.',
     image: null,
 
-    // Common name + Scientific name
-    emphasis: [
-      'Urogymnus polylepis',
-    ],
+    // 只让括号和拉丁学名一起斜体
+    emphasis: ['(Urogymnus polylepis)'],
   };
 
   // =========================================================
@@ -160,8 +158,8 @@ window.PROMPTS = (() => {
           extra: null,
           image: fish.image,
 
-          // Common name + Scientific name
-          emphasis: [fish.name, fish.scientific],
+          // 括号和拉丁学名一起斜体
+          emphasis: [`(${fish.scientific})`],
         };
       }
 
@@ -174,8 +172,8 @@ window.PROMPTS = (() => {
           extra: null,
           image: fish.image,
 
-          // Common name + Scientific name
-          emphasis: [fish.name, fish.scientific],
+          // 括号和拉丁学名一起斜体
+          emphasis: [`(${fish.scientific})`],
         };
       }
 
