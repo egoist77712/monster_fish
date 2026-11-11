@@ -112,7 +112,6 @@ window.PROMPTS = (() => {
 
     // Common name + Scientific name
     emphasis: [
-      'giant freshwater stingray',
       'Urogymnus polylepis',
     ],
   };
